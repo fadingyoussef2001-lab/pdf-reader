@@ -19,6 +19,7 @@ const state = {
   utterance: null,
   speaking: false,
   paused: false,
+  detectedLang: null,  // detected language of the PDF
 };
 
 /* ---- DOM refs ---- */
@@ -38,6 +39,7 @@ const zoomLabel      = $('zoom-label');
 const pdfCanvas      = $('pdf-canvas');
 const textLayer      = $('text-layer');
 const fileNameLabel  = $('file-name-label');
+const langBadge      = $('lang-badge');
 const btnPlay        = $('btn-play');
 const iconPlay       = $('icon-play');
 const iconPause      = $('icon-pause');
@@ -47,6 +49,61 @@ const speedRange     = $('speed-range');
 const speedValue     = $('speed-value');
 const voiceSelect    = $('voice-select');
 const readingProg    = $('reading-progress');
+
+/* ============================================================
+   Language Detection
+   ============================================================ */
+function detectLanguage(text) {
+  if (!text || !text.trim()) return 'unknown';
+
+  const arabicChars  = (text.match(/[\u0600-\u06FF]/g) || []).length;
+  const latinChars   = (text.match(/[A-Za-z]/g) || []).length;
+  const germanChars  = (text.match(/[äöüÄÖÜß]/g) || []).length;
+  const total        = arabicChars + latinChars;
+
+  if (total === 0) return 'unknown';
+
+  const arabicRatio  = arabicChars / total;
+
+  if (arabicRatio > 0.4) return 'ar';
+  if (germanChars > 5 && latinChars > arabicChars) return 'de';
+  return 'en';
+}
+
+const LANG_LABELS = {
+  ar:      'عربي',
+  en:      'إنجليزي',
+  de:      'ألماني',
+  unknown: 'غير معروف',
+};
+
+const LANG_PREF = {
+  ar: ['ar', 'arabic'],
+  en: ['en-US', 'en-GB', 'en'],
+  de: ['de-DE', 'de'],
+};
+
+function showLangBadge(lang) {
+  langBadge.textContent = `اللغة: ${LANG_LABELS[lang] || lang}`;
+  langBadge.classList.remove('hidden');
+}
+
+function applyLangToTextLayer(lang) {
+  if (lang === 'ar') {
+    textLayer.setAttribute('dir', 'rtl');
+  } else {
+    textLayer.setAttribute('dir', 'ltr');
+  }
+}
+
+function autoSelectVoiceForLang(lang) {
+  const voices = speechSynthesis.getVoices();
+  const prefs  = LANG_PREF[lang] || [];
+  for (const prefix of prefs) {
+    const idx = voices.findIndex(v => v.lang.toLowerCase().startsWith(prefix.toLowerCase()));
+    if (idx >= 0) { voiceSelect.value = idx; return; }
+  }
+}
 
 /* ============================================================
    Upload / File Handling
@@ -73,7 +130,7 @@ uploadZone.addEventListener('drop', e => {
   if (file && file.type === 'application/pdf') {
     loadPDF(file);
   } else {
-    showToast('Bitte eine gültige PDF-Datei hochladen.', true);
+    showToast('يرجى تحميل ملف PDF صالح.', true);
   }
 });
 
@@ -89,6 +146,15 @@ async function loadPDF(file) {
     state.currentPage = 1;
     fileNameLabel.textContent = file.name;
 
+    // Detect language from first page text
+    const firstPage = await pdf.getPage(1);
+    const firstContent = await firstPage.getTextContent();
+    const sampleText = firstContent.items.map(i => i.str).join(' ');
+    state.detectedLang = detectLanguage(sampleText);
+    showLangBadge(state.detectedLang);
+    applyLangToTextLayer(state.detectedLang);
+    autoSelectVoiceForLang(state.detectedLang);
+
     heroSection.classList.add('hidden');
     readerSection.classList.remove('hidden');
 
@@ -96,7 +162,7 @@ async function loadPDF(file) {
     updateNav();
   } catch (err) {
     console.error(err);
-    showToast('Fehler beim Laden der PDF. Bitte eine gültige Datei wählen.', true);
+    showToast('خطأ في تحميل الملف. يرجى اختيار ملف PDF صالح.', true);
     hideLoading();
   }
 }
@@ -122,7 +188,7 @@ async function renderPage(pageNum) {
   const textContent = await page.getTextContent();
   buildTextLayer(textContent, viewport);
 
-  pageInfo.textContent = `Seite ${pageNum} / ${state.totalPages}`;
+  pageInfo.textContent = `صفحة ${pageNum} / ${state.totalPages}`;
   updateProgress();
   hideLoading();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -160,6 +226,9 @@ function buildTextLayer(textContent, viewport) {
       state.textItems.push({ text: word, span });
     });
   });
+
+  // Re-apply direction for current page
+  applyLangToTextLayer(state.detectedLang || 'ar');
 }
 
 /* ============================================================
@@ -171,6 +240,8 @@ btnBack.addEventListener('click', () => {
   readerSection.classList.add('hidden');
   fileInput.value = '';
   state.pdfDoc = null;
+  state.detectedLang = null;
+  langBadge.classList.add('hidden');
 });
 
 btnPrev.addEventListener('click', async () => {
@@ -227,9 +298,9 @@ function populateVoices() {
     opt.textContent = `${v.name} (${v.lang})`;
     voiceSelect.appendChild(opt);
   });
-  // Prefer German voice
-  const deIdx = voices.findIndex(v => v.lang.startsWith('de'));
-  if (deIdx >= 0) voiceSelect.value = deIdx;
+  // Prefer Arabic voice by default
+  const arIdx = voices.findIndex(v => v.lang.startsWith('ar'));
+  if (arIdx >= 0) voiceSelect.value = arIdx;
 }
 
 speechSynthesis.addEventListener('voiceschanged', populateVoices);
@@ -259,7 +330,7 @@ btnStop.addEventListener('click', () => {
 
 function startTTS() {
   if (!state.textItems.length) {
-    showToast('Kein Text auf dieser Seite gefunden.');
+    showToast('لا يوجد نص في هذه الصفحة.');
     return;
   }
   state.wordIndex = 0;
@@ -327,13 +398,11 @@ function speakFrom(startIdx) {
   // Word boundary highlighting
   utt.onboundary = e => {
     if (e.name !== 'word') return;
-    // Find which word within chunk
     const chunkText  = text.substring(0, e.charIndex);
     const wordsSoFar = chunkText.trim() ? chunkText.trim().split(/\s+/).length : 0;
     const globalIdx  = startIdx + wordsSoFar;
     highlightWord(globalIdx);
     state.wordIndex = globalIdx;
-    // Update TTS progress bar within page
     const pct = (globalIdx / state.textItems.length) * 100;
     readingProg.style.width = pct + '%';
   };
@@ -363,7 +432,6 @@ function highlightWord(idx) {
     } else if (i === idx) {
       item.span.classList.add('hl-active');
       item.span.classList.remove('hl-done');
-      // Scroll span into view smoothly
       item.span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     } else {
       item.span.classList.remove('hl-active', 'hl-done');
@@ -381,15 +449,15 @@ function updatePlayButton() {
   if (state.speaking && !state.paused) {
     iconPlay.classList.add('hidden');
     iconPause.classList.remove('hidden');
-    ttsBtnLabel.textContent = 'Pause';
+    ttsBtnLabel.textContent = 'إيقاف مؤقت';
   } else if (state.paused) {
     iconPlay.classList.remove('hidden');
     iconPause.classList.add('hidden');
-    ttsBtnLabel.textContent = 'Weiter';
+    ttsBtnLabel.textContent = 'استمرار';
   } else {
     iconPlay.classList.remove('hidden');
     iconPause.classList.add('hidden');
-    ttsBtnLabel.textContent = 'Vorlesen starten';
+    ttsBtnLabel.textContent = 'بدء القراءة';
   }
 }
 
@@ -402,7 +470,7 @@ function showLoading() {
   if (spinnerEl) return;
   spinnerEl = document.createElement('div');
   spinnerEl.className = 'spinner-wrap';
-  spinnerEl.innerHTML = '<div class="spinner"></div><span>PDF wird geladen…</span>';
+  spinnerEl.innerHTML = '<div class="spinner"></div><span>جارٍ تحميل الملف…</span>';
   document.querySelector('.viewer-wrapper')?.appendChild(spinnerEl);
   pdfCanvas.style.display = 'none';
   textLayer.style.display = 'none';

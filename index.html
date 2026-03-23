@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Andreh Deeb – PDF Reader</title>
+  <title>Andreh Deeb – قارئ PDF</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
@@ -35,7 +35,7 @@
         </span>
         <span class="logo-text">Andreh Deeb</span>
       </div>
-      <nav class="nav-badge">PDF Reader Pro</nav>
+      <nav class="nav-badge">قارئ PDF الذكي</nav>
     </div>
   </header>
 
@@ -43,8 +43,8 @@
   <main>
     <section class="hero" id="hero-section">
       <div class="hero-content">
-        <h1 class="hero-title">Lese deine PDF <span class="gradient-text">intelligent</span></h1>
-        <p class="hero-sub">Lade eine PDF-Datei hoch – der Text wird automatisch vorgelesen und farblich hervorgehoben, damit du immer weißt, wo du bist.</p>
+        <h1 class="hero-title">اقرأ ملف PDF بطريقة <span class="gradient-text">ذكية</span></h1>
+        <p class="hero-sub">ارفع ملف PDF – سيتم قراءة النص تلقائيًا بصوت عالٍ مع تمييز الكلمات بالألوان حتى تعرف دائمًا أين أنت.</p>
 
         <div class="upload-zone" id="upload-zone">
           <input type="file" id="file-input" accept=".pdf" hidden />
@@ -61,24 +61,24 @@
               </defs>
             </svg>
           </div>
-          <p class="upload-title">PDF hierher ziehen</p>
-          <p class="upload-sub">oder klicken zum Auswählen</p>
-          <button class="btn-upload" id="btn-choose">Datei auswählen</button>
+          <p class="upload-title">اسحب ملف PDF هنا</p>
+          <p class="upload-sub">أو انقر للاختيار</p>
+          <button class="btn-upload" id="btn-choose">اختر ملفًا</button>
         </div>
       </div>
 
       <div class="hero-illustration">
         <div class="float-card card1">
           <span class="card-dot dot-green"></span>
-          <span>Text wird hervorgehoben</span>
+          <span>تمييز النص بالألوان</span>
         </div>
         <div class="float-card card2">
           <span class="card-dot dot-purple"></span>
-          <span>Vorgelesen per Stimme</span>
+          <span>قراءة بالصوت تلقائيًا</span>
         </div>
         <div class="float-card card3">
           <span class="card-dot dot-teal"></span>
-          <span>Keine Anmeldung nötig</span>
+          <span>بدون تسجيل أو تتبع</span>
         </div>
       </div>
     </section>
@@ -89,37 +89,38 @@
       <!-- Toolbar -->
       <div class="toolbar">
         <div class="toolbar-left">
-          <button class="btn-icon" id="btn-back" title="Neue PDF laden">
+          <button class="btn-icon" id="btn-back" title="تحميل ملف PDF جديد">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M19 12H5M12 5l-7 7 7 7"/>
+              <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
           </button>
           <span class="file-name-label" id="file-name-label">–</span>
+          <span class="lang-badge hidden" id="lang-badge"></span>
         </div>
 
         <div class="toolbar-center">
-          <button class="btn-icon" id="btn-prev" title="Vorherige Seite" disabled>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M15 18l-6-6 6-6"/>
-            </svg>
-          </button>
-          <span class="page-info" id="page-info">Seite 1 / 1</span>
-          <button class="btn-icon" id="btn-next" title="Nächste Seite" disabled>
+          <button class="btn-icon" id="btn-prev" title="الصفحة السابقة" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+          <span class="page-info" id="page-info">صفحة 1 / 1</span>
+          <button class="btn-icon" id="btn-next" title="الصفحة التالية" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"/>
             </svg>
           </button>
         </div>
 
         <div class="toolbar-right">
-          <button class="btn-icon" id="btn-zoom-out" title="Verkleinern">
+          <button class="btn-icon" id="btn-zoom-out" title="تصغير">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <circle cx="11" cy="11" r="8"/>
               <path d="M21 21l-4.35-4.35M8 11h6"/>
             </svg>
           </button>
           <span class="zoom-label" id="zoom-label">100%</span>
-          <button class="btn-icon" id="btn-zoom-in" title="Vergrößern">
+          <button class="btn-icon" id="btn-zoom-in" title="تكبير">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <circle cx="11" cy="11" r="8"/>
               <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
@@ -137,17 +138,17 @@
           <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" class="hidden">
             <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
           </svg>
-          <span id="tts-btn-label">Vorlesen starten</span>
+          <span id="tts-btn-label">بدء القراءة</span>
         </button>
 
         <div class="tts-controls">
-          <label class="tts-label">Geschwindigkeit</label>
+          <label class="tts-label">السرعة</label>
           <input type="range" id="speed-range" min="0.5" max="2" step="0.1" value="1" class="range-input" />
           <span class="tts-value" id="speed-value">1.0×</span>
         </div>
 
         <div class="tts-controls">
-          <label class="tts-label">Stimme</label>
+          <label class="tts-label">الصوت</label>
           <select id="voice-select" class="voice-select"></select>
         </div>
 
@@ -155,7 +156,7 @@
           <svg viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="6" width="12" height="12" rx="2"/>
           </svg>
-          Stopp
+          إيقاف
         </button>
       </div>
 
@@ -179,7 +180,7 @@
 
   <!-- Footer -->
   <footer class="footer">
-    <p>© 2024 <strong>Andreh Deeb</strong> – PDF Reader Pro. Keine Anmeldung. Kein Tracking. Nur Lesen.</p>
+    <p>© 2024 <strong>Andreh Deeb</strong> – قارئ PDF الذكي. بدون تسجيل. بدون تتبع. فقط القراءة.</p>
   </footer>
 
   <script src="app.js"></script>
