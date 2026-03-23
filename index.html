@@ -1,71 +1,77 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>قارئ PDF عربي</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
 
-  <!-- شاشة الرفع -->
-  <div id="screen-upload">
+<!-- ═══════════════════════════════ شاشة الرفع ═══════════════════════════════ -->
+<div id="page-upload">
+  <div class="upload-box">
+    <div class="upload-logo">ق</div>
     <h1>قارئ PDF عربي</h1>
-    <p>ارفع ملف PDF وسيُقرأ بصوت عالٍ من اليمين إلى اليسار</p>
-    <div id="drop-zone">
-      <input type="file" id="file-input" accept=".pdf" hidden />
-      <p>اسحب الملف هنا</p>
-      <button id="btn-choose">اختر ملف PDF</button>
+    <p class="upload-sub">ارفع ملفك واقرأ بصوت أو بعيون مرتاحة</p>
+    <label id="drop-zone">
+      <input type="file" id="file-input" accept=".pdf"/>
+      <span class="drop-icon">⬆</span>
+      <span class="drop-text">اسحب ملف PDF هنا أو انقر للاختيار</span>
+    </label>
+    <div id="upload-error" class="hidden">⚠ يرجى اختيار ملف PDF صالح</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ شاشة القراءة ═══════════════════════════════ -->
+<div id="page-reader" class="hidden">
+
+  <!-- شريط أعلى -->
+  <header id="header">
+    <button id="btn-new" title="ملف جديد">↩ ملف جديد</button>
+    <span id="lbl-file"></span>
+    <div id="page-nav">
+      <button id="btn-prev" disabled>›</button>
+      <span id="lbl-page">1 / 1</span>
+      <button id="btn-next" disabled>‹</button>
+    </div>
+  </header>
+
+  <!-- شريط القراءة الصوتية -->
+  <div id="tts-bar">
+    <button id="btn-play" class="btn-main">▶&nbsp; ابدأ القراءة</button>
+    <button id="btn-stop" class="btn-sec">■&nbsp; إيقاف</button>
+
+    <div class="ctrl-group">
+      <span class="ctrl-lbl">السرعة</span>
+      <input type="range" id="rng-speed" min="0.5" max="2.5" step="0.1" value="1"/>
+      <span id="lbl-speed">1.0×</span>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-lbl">الصوت</span>
+      <select id="sel-voice"></select>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-lbl">حجم الخط</span>
+      <button id="btn-fs-down">A−</button>
+      <button id="btn-fs-up">A+</button>
     </div>
   </div>
 
-  <!-- شاشة القراءة -->
-  <div id="screen-reader" class="hidden">
+  <!-- منطقة النص -->
+  <main id="text-area">
+    <div id="text-content" dir="rtl"></div>
+  </main>
 
-    <div id="topbar">
-      <button id="btn-back">← ملف جديد</button>
-      <span id="file-name"></span>
-      <div id="nav">
-        <button id="btn-prev">›</button>
-        <span id="page-info">1 / 1</span>
-        <button id="btn-next">‹</button>
-      </div>
-      <div id="zoom-controls">
-        <button id="btn-zoom-out">−</button>
-        <span id="zoom-label">150%</span>
-        <button id="btn-zoom-in">+</button>
-      </div>
-      <button id="btn-mode" title="تبديل بين PDF والنص">📄 عرض النص</button>
-    </div>
+  <!-- شريط التقدم -->
+  <div id="prog-bar"><div id="prog-fill"></div></div>
 
-    <div id="tts-bar">
-      <button id="btn-play">▶ ابدأ القراءة</button>
-      <button id="btn-stop">■ إيقاف</button>
-      <label>السرعة
-        <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1" />
-        <span id="speed-val">1.0×</span>
-      </label>
-      <label>الصوت
-        <select id="voice-select"></select>
-      </label>
-    </div>
+</div>
 
-    <!-- وضع PDF -->
-    <div id="pdf-view">
-      <div id="canvas-wrap">
-        <canvas id="pdf-canvas"></canvas>
-        <canvas id="hl-canvas"></canvas>
-      </div>
-    </div>
-
-    <!-- وضع النص -->
-    <div id="text-view" class="hidden" dir="rtl"></div>
-
-    <div id="progress-bar"><div id="progress-fill"></div></div>
-  </div>
-
-  <script src="app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
