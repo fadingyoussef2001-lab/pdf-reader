@@ -391,6 +391,9 @@ function speakFrom(startIdx) {
   const utt = new SpeechSynthesisUtterance(text);
   utt.rate  = parseFloat(speedRange.value);
 
+  const LANG_CODE = { ar: 'ar-SA', en: 'en-US', de: 'de-DE' };
+  utt.lang = LANG_CODE[state.detectedLang] || 'ar-SA';
+
   const voices = speechSynthesis.getVoices();
   const selIdx = parseInt(voiceSelect.value, 10);
   if (voices[selIdx]) utt.voice = voices[selIdx];
