@@ -214,11 +214,14 @@ function buildTextLayer(textContent, viewport) {
     // Split into words for fine-grained highlighting
     const words = item.str.split(' ').filter(w => w.length > 0);
     const wordWidth = w / Math.max(words.length, 1);
+    const isRTL = state.detectedLang === 'ar';
 
     words.forEach((word, i) => {
       const span = document.createElement('span');
       span.textContent = word + ' ';
-      span.style.left     = (x + i * wordWidth) + 'px';
+      // For RTL: word[0] is the rightmost word, so place it at x + (n-1-i) * wordWidth
+      const xPos = isRTL ? (x + (words.length - 1 - i) * wordWidth) : (x + i * wordWidth);
+      span.style.left     = xPos + 'px';
       span.style.top      = y + 'px';
       span.style.width    = wordWidth + 'px';
       span.style.height   = h + 'px';
