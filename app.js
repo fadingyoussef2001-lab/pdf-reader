@@ -1,499 +1,398 @@
-/* ============================================================
-   Andreh Deeb – PDF Reader with Canvas Highlight Overlay
-   ============================================================ */
-
 'use strict';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-/* ---- State ---- */
-const state = {
-  pdfDoc:      null,
-  currentPage: 1,
-  totalPages:  0,
-  scale:       1.5,
-  textItems:   [],   // [{text, rect:{x,y,w,h}}]
-  sentences:   [],   // [{text, rects:[{x,y,w,h}]}]
-  sentIndex:   0,
-  speaking:    false,
-  paused:      false,
+/* ============================================================
+   الحالة
+   ============================================================ */
+const S = {
+  pdf:       null,
+  page:      1,
+  pages:     0,
+  scale:     1.5,
+  items:     [],   // { text, x, y, w, h }
+  sents:     [],   // { text, rects[] }
+  idx:       0,
+  playing:   false,
+  paused:    false,
+  textMode:  false,
 };
 
-/* ---- DOM refs ---- */
-const $ = id => document.getElementById(id);
-const heroSection   = $('hero-section');
-const readerSection = $('reader-section');
-const fileInput     = $('file-input');
-const uploadZone    = $('upload-zone');
-const btnChoose     = $('btn-choose');
-const btnBack       = $('btn-back');
-const btnPrev       = $('btn-prev');
-const btnNext       = $('btn-next');
-const pageInfo      = $('page-info');
-const btnZoomIn     = $('btn-zoom-in');
-const btnZoomOut    = $('btn-zoom-out');
-const zoomLabel     = $('zoom-label');
-const pdfCanvas     = $('pdf-canvas');
-const hlCanvas      = $('highlight-canvas');
-const hlCtx         = hlCanvas.getContext('2d');
-const fileNameLabel = $('file-name-label');
-const btnPlay       = $('btn-play');
-const iconPlay      = $('icon-play');
-const iconPause     = $('icon-pause');
-const ttsBtnLabel   = $('tts-btn-label');
-const btnStop       = $('btn-stop');
-const speedRange    = $('speed-range');
-const speedValue    = $('speed-value');
-const voiceSelect   = $('voice-select');
-const readingProg   = $('reading-progress');
-const btnTextMode   = $('btn-text-mode');
-const textPanel     = $('text-panel');
-const viewerCont    = $('viewer-container');
-let   textModeOn    = false;
-
 /* ============================================================
-   Arabic Voice Selection
+   عناصر الصفحة
    ============================================================ */
-function autoSelectArabicVoice() {
-  const voices = speechSynthesis.getVoices();
-  const idx = voices.findIndex(v => v.lang.toLowerCase().startsWith('ar'));
-  if (idx >= 0) voiceSelect.value = idx;
-}
+const $  = id => document.getElementById(id);
+
+const scrUpload  = $('screen-upload');
+const scrReader  = $('screen-reader');
+const dropZone   = $('drop-zone');
+const fileInput  = $('file-input');
+const btnChoose  = $('btn-choose');
+
+const topbar     = $('topbar');
+const btnBack    = $('btn-back');
+const btnPrev    = $('btn-prev');
+const btnNext    = $('btn-next');
+const pageInfo   = $('page-info');
+const btnZoomIn  = $('btn-zoom-in');
+const btnZoomOut = $('btn-zoom-out');
+const zoomLabel  = $('zoom-label');
+const fileName   = $('file-name');
+const btnMode    = $('btn-mode');
+
+const btnPlay    = $('btn-play');
+const btnStop    = $('btn-stop');
+const speedRange = $('speed');
+const speedVal   = $('speed-val');
+const voiceSel   = $('voice-select');
+
+const pdfView    = $('pdf-view');
+const canvasWrap = $('canvas-wrap');
+const pdfCanvas  = $('pdf-canvas');
+const hlCanvas   = $('hl-canvas');
+const hlCtx      = hlCanvas.getContext('2d');
+
+const textView   = $('text-view');
+const progFill   = $('progress-fill');
 
 /* ============================================================
-   Upload / File Handling
+   رفع الملف
    ============================================================ */
 btnChoose.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click',  e => { if (e.target !== btnChoose) fileInput.click(); });
 fileInput.addEventListener('change', e => { if (e.target.files[0]) loadPDF(e.target.files[0]); });
 
-uploadZone.addEventListener('click', e => { if (e.target !== btnChoose) fileInput.click(); });
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-uploadZone.addEventListener('drop', e => {
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
   e.preventDefault();
-  uploadZone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file && file.type === 'application/pdf') loadPDF(file);
-  else showToast('يرجى تحميل ملف PDF صالح.', true);
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f?.type === 'application/pdf') loadPDF(f);
 });
 
 async function loadPDF(file) {
-  showLoading();
   stopTTS();
   try {
     const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-    state.pdfDoc       = pdf;
-    state.totalPages   = pdf.numPages;
-    state.currentPage  = 1;
-    fileNameLabel.textContent = file.name;
-
-    const firstPage    = await pdf.getPage(1);
-    const firstContent = await firstPage.getTextContent();
-    autoSelectArabicVoice();
-
-    heroSection.classList.add('hidden');
-    readerSection.classList.remove('hidden');
-    await renderPage(state.currentPage);
+    S.pdf   = pdf;
+    S.pages = pdf.numPages;
+    S.page  = 1;
+    fileName.textContent = file.name;
+    scrUpload.classList.add('hidden');
+    scrReader.classList.remove('hidden');
+    await renderPage(1);
     updateNav();
-  } catch (err) {
-    console.error(err);
-    showToast('خطأ في تحميل الملف. يرجى اختيار ملف PDF صالح.', true);
-    hideLoading();
+    pickArabicVoice();
+  } catch {
+    alert('خطأ في تحميل الملف. يرجى اختيار ملف PDF صالح.');
   }
 }
 
 /* ============================================================
-   PDF Rendering
+   رسم الصفحة
    ============================================================ */
-async function renderPage(pageNum) {
-  showLoading();
+async function renderPage(num) {
   stopTTS();
+  const page     = await S.pdf.getPage(num);
+  const viewport = page.getViewport({ scale: S.scale });
 
-  const page     = await state.pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale: state.scale });
-
-  // Size both canvases identically
   pdfCanvas.width  = hlCanvas.width  = viewport.width;
   pdfCanvas.height = hlCanvas.height = viewport.height;
 
-  // Render PDF onto pdfCanvas
   await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport }).promise;
 
-  // Build text item rects (for highlight drawing)
-  const textContent = await page.getTextContent();
-  buildTextRects(textContent, viewport);
+  const tc = await page.getTextContent();
+  buildItems(tc, viewport);
 
-  pageInfo.textContent = `صفحة ${pageNum} / ${state.totalPages}`;
-  updateProgress();
-  hideLoading();
-  if (textModeOn) renderTextPanel();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  pageInfo.textContent = `${num} / ${S.pages}`;
+  progFill.style.width = (num / S.pages * 100) + '%';
+
+  if (S.textMode) buildTextView();
+  pdfView.scrollTop = 0;
+  textView.scrollTop = 0;
 }
 
 /* ============================================================
-   Text Item Extraction – store bounding rects, no DOM spans
+   استخراج عناصر النص وبناء الجمل
    ============================================================ */
-function buildTextRects(textContent, viewport) {
-  state.textItems = [];
-
-  textContent.items.forEach(item => {
+function buildItems(tc, viewport) {
+  S.items = [];
+  tc.items.forEach(item => {
     if (!item.str.trim()) return;
-
     const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-    // tx[4]=x (left edge), tx[5]=y (baseline)
-    // item.height is in user-space; after transform it's already scaled
-    const x = tx[4];
-    const y = tx[5] - item.height;
-    const w = item.width;    // width from PDF.js already in viewport space
-    const h = item.height;
-
-    state.textItems.push({ text: item.str, rect: { x, y, w, h } });
+    S.items.push({
+      text: item.str,
+      x: tx[4],
+      y: tx[5] - item.height,
+      w: item.width,
+      h: item.height,
+    });
   });
-
-  buildSentences();
+  buildSents();
 }
 
-/* ============================================================
-   Sentence Builder – group text items into natural sentences
-   (max ~120 chars so TTS doesn't get cut off)
-   ============================================================ */
-const MAX_SENT_CHARS = 120;
-
-function buildSentences() {
-  state.sentences = [];
+function buildSents() {
+  S.sents = [];
   let cur = { parts: [], rects: [] };
 
   const flush = () => {
-    if (cur.parts.length) {
-      state.sentences.push({ text: cur.parts.join(' ').trim(), rects: cur.rects });
-      cur = { parts: [], rects: [] };
-    }
+    if (!cur.parts.length) return;
+    S.sents.push({ text: cur.parts.join(' ').trim(), rects: cur.rects });
+    cur = { parts: [], rects: [] };
   };
 
-  state.textItems.forEach(({ text, rect }) => {
+  S.items.forEach(({ text, x, y, w, h }) => {
     cur.parts.push(text);
-    cur.rects.push(rect);
-    const joined = cur.parts.join(' ');
-    // Flush on sentence-ending punctuation OR when getting too long
-    if (/[.!?؟،]/.test(text) || joined.length >= MAX_SENT_CHARS) {
-      flush();
-    }
+    cur.rects.push({ x, y, w, h });
+    if (/[.!?؟،\n]/.test(text) || cur.parts.join(' ').length >= 120) flush();
   });
   flush();
 }
 
 /* ============================================================
-   Canvas Highlight Drawing
+   التمييز على الـ Canvas
    ============================================================ */
-const HL_ACTIVE = 'rgba(108,99,255,0.50)';
-const HL_DONE   = 'rgba(62,207,207,0.22)';
-
-function clearHighlights() {
+function drawHL(idx) {
   hlCtx.clearRect(0, 0, hlCanvas.width, hlCanvas.height);
-}
-
-function drawHighlights(activeSentIdx) {
-  clearHighlights();
-
-  state.sentences.forEach((sent, i) => {
-    if (i === activeSentIdx) {
-      hlCtx.fillStyle = HL_ACTIVE;
-      sent.rects.forEach(r => {
+  S.sents.forEach((s, i) => {
+    if (i === idx) {
+      hlCtx.fillStyle = 'rgba(200,168,75,0.45)';
+      s.rects.forEach(r => {
         hlCtx.beginPath();
         hlCtx.roundRect(r.x - 2, r.y - 1, r.w + 4, r.h + 2, 3);
         hlCtx.fill();
       });
-    } else if (i < activeSentIdx) {
-      hlCtx.fillStyle = HL_DONE;
-      sent.rects.forEach(r => hlCtx.fillRect(r.x, r.y, r.w, r.h));
+    } else if (i < idx) {
+      hlCtx.fillStyle = 'rgba(200,168,75,0.15)';
+      s.rects.forEach(r => hlCtx.fillRect(r.x, r.y, r.w, r.h));
     }
   });
 }
 
-function scrollToSentence(sentIdx) {
-  const sent = state.sentences[sentIdx];
-  if (!sent || !sent.rects.length) return;
-  const wrapper = document.querySelector('.viewer-wrapper');
-  if (!wrapper) return;
-  const r = sent.rects[0];
-  // hlCanvas offset inside wrapper
-  const canvasTop = hlCanvas.offsetTop;
-  // Scroll so the sentence is roughly centered
-  wrapper.scrollTo({ top: canvasTop + r.y - wrapper.clientHeight / 3, behavior: 'smooth' });
+function clearHL() {
+  hlCtx.clearRect(0, 0, hlCanvas.width, hlCanvas.height);
 }
 
 /* ============================================================
-   Navigation
+   وضع النص الخالص
    ============================================================ */
-btnBack.addEventListener('click', () => {
-  stopTTS();
-  heroSection.classList.remove('hidden');
-  readerSection.classList.add('hidden');
-  fileInput.value = '';
-  state.pdfDoc = null;
-});
-
-btnPrev.addEventListener('click', async () => {
-  if (state.currentPage <= 1) return;
-  state.currentPage--;
-  await renderPage(state.currentPage);
-  updateNav(); updateProgress();
-});
-
-btnNext.addEventListener('click', async () => {
-  if (state.currentPage >= state.totalPages) return;
-  state.currentPage++;
-  await renderPage(state.currentPage);
-  updateNav(); updateProgress();
-});
-
-function updateNav() {
-  btnPrev.disabled = state.currentPage <= 1;
-  btnNext.disabled = state.currentPage >= state.totalPages;
-}
-
-function updateProgress() {
-  const pct = state.totalPages > 0 ? (state.currentPage / state.totalPages) * 100 : 0;
-  readingProg.style.width = pct + '%';
-}
-
-/* ============================================================
-   Zoom
-   ============================================================ */
-btnZoomIn.addEventListener('click',  () => changeZoom( 0.25));
-btnZoomOut.addEventListener('click', () => changeZoom(-0.25));
-
-async function changeZoom(delta) {
-  const next = Math.min(Math.max(state.scale + delta, 0.5), 4);
-  if (next === state.scale) return;
-  state.scale = next;
-  zoomLabel.textContent = Math.round(state.scale * 100) + '%';
-  await renderPage(state.currentPage);
-}
-
-/* ============================================================
-   Voices
-   ============================================================ */
-function populateVoices() {
-  const voices = speechSynthesis.getVoices();
-  voiceSelect.innerHTML = '';
-  voices
-    .map((v, i) => ({ v, i }))
-    .filter(({ v }) => v.lang.toLowerCase().startsWith('ar'))
-    .forEach(({ v, i }) => {
-      const opt = document.createElement('option');
-      opt.value       = i;
-      opt.textContent = `${v.name} (${v.lang})`;
-      voiceSelect.appendChild(opt);
-    });
-  // Fallback: if no Arabic voices found, show all voices
-  if (!voiceSelect.options.length) {
-    voices.forEach((v, i) => {
-      const opt = document.createElement('option');
-      opt.value = i; opt.textContent = `${v.name} (${v.lang})`;
-      voiceSelect.appendChild(opt);
-    });
-  }
-  autoSelectArabicVoice();
-}
-
-/* ============================================================
-   Text Mode Toggle
-   ============================================================ */
-btnTextMode.addEventListener('click', () => {
-  textModeOn = !textModeOn;
-  btnTextMode.classList.toggle('active', textModeOn);
-  viewerCont.classList.toggle('hidden', textModeOn);
-  textPanel.classList.toggle('hidden', !textModeOn);
-  if (textModeOn) renderTextPanel();
-});
-
-function renderTextPanel() {
-  textPanel.innerHTML = '';
-  state.sentences.forEach((sent, i) => {
+function buildTextView() {
+  textView.innerHTML = '';
+  S.sents.forEach((s, i) => {
     const span = document.createElement('span');
-    span.className = 'tp-sent' + (i < state.sentIndex ? ' done' : i === state.sentIndex && state.speaking ? ' active' : '');
-    span.textContent = sent.text + ' ';
-    span.dataset.idx = i;
+    span.className = 'ts';
+    span.dataset.i = i;
+    span.textContent = s.text + ' ';
     span.addEventListener('click', () => {
-      if (!state.speaking) startTTSFrom(i);
-      else restartTTSFromCurrent(i);
+      S.playing ? restartFrom(i) : startFrom(i);
     });
-    textPanel.appendChild(span);
+    textView.appendChild(span);
   });
 }
 
-function updateTextPanel(idx) {
-  if (!textModeOn) return;
-  textPanel.querySelectorAll('.tp-sent').forEach((el, i) => {
+function syncTextView(idx) {
+  textView.querySelectorAll('.ts').forEach((el, i) => {
     el.classList.toggle('active', i === idx);
-    el.classList.toggle('done',   i < idx);
+    el.classList.toggle('done',   i < idx && idx >= 0);
   });
-  // Scroll active sentence into view
-  const active = textPanel.querySelector('.tp-sent.active');
+  const active = textView.querySelector('.ts.active');
   if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
-speechSynthesis.addEventListener('voiceschanged', populateVoices);
-populateVoices();
-
-speedRange.addEventListener('input', () => {
-  speedValue.textContent = parseFloat(speedRange.value).toFixed(1) + '×';
-  if (state.speaking && !state.paused) restartTTSFromCurrent();
+/* ============================================================
+   التبديل بين وضع PDF ووضع النص
+   ============================================================ */
+btnMode.addEventListener('click', () => {
+  S.textMode = !S.textMode;
+  btnMode.classList.toggle('active', S.textMode);
+  btnMode.textContent = S.textMode ? '🖼 عرض PDF' : '📄 عرض النص';
+  pdfView.classList.toggle('hidden', S.textMode);
+  textView.classList.toggle('hidden', !S.textMode);
+  if (S.textMode) buildTextView();
 });
 
 /* ============================================================
-   TTS
+   التنقل بين الصفحات
+   ============================================================ */
+btnBack.addEventListener('click', () => {
+  stopTTS();
+  scrReader.classList.add('hidden');
+  scrUpload.classList.remove('hidden');
+  S.pdf = null;
+  fileInput.value = '';
+});
+
+btnPrev.addEventListener('click', async () => {
+  if (S.page <= 1) return;
+  S.page--;
+  await renderPage(S.page);
+  updateNav();
+});
+
+btnNext.addEventListener('click', async () => {
+  if (S.page >= S.pages) return;
+  S.page++;
+  await renderPage(S.page);
+  updateNav();
+});
+
+function updateNav() {
+  btnPrev.disabled = S.page <= 1;
+  btnNext.disabled = S.page >= S.pages;
+}
+
+/* ============================================================
+   التكبير والتصغير
+   ============================================================ */
+btnZoomIn.addEventListener('click',  () => zoom(0.25));
+btnZoomOut.addEventListener('click', () => zoom(-0.25));
+
+async function zoom(d) {
+  const next = Math.min(Math.max(S.scale + d, 0.5), 4);
+  if (next === S.scale) return;
+  S.scale = next;
+  zoomLabel.textContent = Math.round(S.scale * 100) + '%';
+  await renderPage(S.page);
+}
+
+/* ============================================================
+   الأصوات العربية
+   ============================================================ */
+function fillVoices() {
+  const all = speechSynthesis.getVoices();
+  voiceSel.innerHTML = '';
+  const arabic = all.filter(v => v.lang.toLowerCase().startsWith('ar'));
+  const list   = arabic.length ? arabic : all;   // احتياط إذا لم تتوفر أصوات عربية
+  list.forEach((v, i) => {
+    const o = document.createElement('option');
+    o.value = all.indexOf(v);
+    o.textContent = `${v.name} (${v.lang})`;
+    voiceSel.appendChild(o);
+  });
+}
+
+function pickArabicVoice() {
+  const all = speechSynthesis.getVoices();
+  const idx = all.findIndex(v => v.lang.toLowerCase().startsWith('ar'));
+  if (idx >= 0) voiceSel.value = idx;
+}
+
+speechSynthesis.addEventListener('voiceschanged', () => { fillVoices(); pickArabicVoice(); });
+fillVoices();
+
+speedRange.addEventListener('input', () => {
+  speedVal.textContent = parseFloat(speedRange.value).toFixed(1) + '×';
+  if (S.playing && !S.paused) restartFrom(S.idx);
+});
+
+/* ============================================================
+   قراءة صوتية TTS
    ============================================================ */
 btnPlay.addEventListener('click', () => {
-  if (!state.pdfDoc) return;
-  if      (state.paused)  resumeTTS();
-  else if (state.speaking) pauseTTS();
-  else                    startTTS();
+  if (!S.pdf) return;
+  if      (S.paused)  resume();
+  else if (S.playing) pause();
+  else                startFrom(0);
 });
 
 btnStop.addEventListener('click', stopTTS);
 
-function startTTS() {
-  if (!state.sentences.length) { showToast('لا يوجد نص في هذه الصفحة.'); return; }
-  if (textModeOn) renderTextPanel();
-  state.sentIndex = 0;
-  state.speaking  = true;
-  state.paused    = false;
-  updatePlayButton();
-  speakFrom(0);
+function startFrom(idx) {
+  if (!S.sents.length) return;
+  S.idx     = idx;
+  S.playing = true;
+  S.paused  = false;
+  updateBtn();
+  speakIdx(idx);
 }
 
-function startTTSFrom(idx) {
-  if (!state.sentences.length) return;
-  if (textModeOn) renderTextPanel();
-  state.sentIndex = idx;
-  state.speaking  = true;
-  state.paused    = false;
-  updatePlayButton();
-  speakFrom(idx);
-}
-
-function pauseTTS() {
+function pause() {
   speechSynthesis.pause();
-  state.paused = true;
-  updatePlayButton();
+  S.paused = true;
+  updateBtn();
 }
 
-function resumeTTS() {
+function resume() {
   speechSynthesis.resume();
-  state.paused = false;
-  updatePlayButton();
+  S.paused = false;
+  updateBtn();
 }
 
 function stopTTS() {
   speechSynthesis.cancel();
-  state.speaking  = false;
-  state.paused    = false;
-  state.sentIndex = 0;
-  clearHighlights();
-  updatePlayButton();
-  updateProgress();
-  updateTextPanel(-1);
+  S.playing = false;
+  S.paused  = false;
+  S.idx     = 0;
+  clearHL();
+  syncTextView(-1);
+  updateBtn();
 }
 
-function restartTTSFromCurrent(idx) {
-  const target = idx !== undefined ? idx : state.sentIndex;
+function restartFrom(idx) {
   speechSynthesis.cancel();
-  setTimeout(() => speakFrom(target), 80);
+  S.idx = idx;
+  setTimeout(() => speakIdx(idx), 80);
 }
 
-function speakFrom(idx) {
-  state.sentIndex = idx;
+function speakIdx(idx) {
+  S.idx = idx;
 
-  if (idx >= state.sentences.length) {
-    state.speaking = false;
-    updatePlayButton();
-    clearHighlights();
-    // Auto-advance to next page
-    if (state.currentPage < state.totalPages) {
-      state.currentPage++;
-      renderPage(state.currentPage).then(() => { updateNav(); startTTS(); });
+  if (idx >= S.sents.length) {
+    S.playing = false;
+    updateBtn();
+    clearHL();
+    // انتقل للصفحة التالية تلقائياً
+    if (S.page < S.pages) {
+      S.page++;
+      renderPage(S.page).then(() => { updateNav(); startFrom(0); });
     }
     return;
   }
 
-  const sent = state.sentences[idx];
-  drawHighlights(idx);
-  scrollToSentence(idx);
-  updateTextPanel(idx);
+  drawHL(idx);
+  if (S.textMode) syncTextView(idx);
 
-  const pct = (idx / state.sentences.length) * 100;
-  readingProg.style.width = pct + '%';
+  // تمرير الصفحة لتظهر الجملة النشطة
+  const r = S.sents[idx].rects[0];
+  if (r && !S.textMode) {
+    pdfView.scrollTo({ top: canvasWrap.offsetTop + r.y - pdfView.clientHeight / 3, behavior: 'smooth' });
+  }
 
-  const utt  = new SpeechSynthesisUtterance(sent.text);
-  utt.rate   = parseFloat(speedRange.value);
+  progFill.style.width = ((S.page - 1 + idx / S.sents.length) / S.pages * 100) + '%';
+
+  const utt  = new SpeechSynthesisUtterance(S.sents[idx].text);
   utt.lang   = 'ar-SA';
+  utt.rate   = parseFloat(speedRange.value);
 
-  const voices = speechSynthesis.getVoices();
-  const selIdx = parseInt(voiceSelect.value, 10);
-  if (voices[selIdx]) utt.voice = voices[selIdx];
+  const allVoices = speechSynthesis.getVoices();
+  const vi = parseInt(voiceSel.value, 10);
+  if (allVoices[vi]) utt.voice = allVoices[vi];
 
-  utt.onend = () => {
-    if (!state.speaking) return;
-    speakFrom(idx + 1);
-  };
-
-  utt.onerror = err => {
-    if (err.error !== 'interrupted' && err.error !== 'canceled')
-      console.warn('TTS error:', err.error);
-  };
+  utt.onend  = () => { if (S.playing) speakIdx(idx + 1); };
+  utt.onerror = e => { if (e.error !== 'interrupted' && e.error !== 'canceled') console.warn(e.error); };
 
   speechSynthesis.speak(utt);
 }
 
-function updatePlayButton() {
-  const playing = state.speaking && !state.paused;
-  iconPlay.classList.toggle('hidden',  playing);
-  iconPause.classList.toggle('hidden', !playing);
-  ttsBtnLabel.textContent = playing ? 'إيقاف مؤقت' : state.paused ? 'استمرار' : 'بدء القراءة';
+function updateBtn() {
+  if (S.playing && !S.paused) {
+    btnPlay.textContent = '⏸ إيقاف مؤقت';
+  } else if (S.paused) {
+    btnPlay.textContent = '▶ استمرار';
+  } else {
+    btnPlay.textContent = '▶ ابدأ القراءة';
+  }
 }
 
 /* ============================================================
-   Loading Spinner
-   ============================================================ */
-let spinnerEl = null;
-
-function showLoading() {
-  if (spinnerEl) return;
-  spinnerEl = document.createElement('div');
-  spinnerEl.className = 'spinner-wrap';
-  spinnerEl.innerHTML = '<div class="spinner"></div><span>جارٍ تحميل الملف…</span>';
-  document.querySelector('.viewer-wrapper')?.appendChild(spinnerEl);
-  pdfCanvas.style.display = hlCanvas.style.display = 'none';
-}
-
-function hideLoading() {
-  if (spinnerEl) { spinnerEl.remove(); spinnerEl = null; }
-  pdfCanvas.style.display = hlCanvas.style.display = '';
-}
-
-/* ============================================================
-   Toast
-   ============================================================ */
-function showToast(msg, isError = false) {
-  const t = document.createElement('div');
-  t.className = 'toast' + (isError ? ' error' : '');
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3500);
-}
-
-/* ============================================================
-   Keyboard Shortcuts
+   اختصارات لوحة المفاتيح
    ============================================================ */
 document.addEventListener('keydown', e => {
-  if (!state.pdfDoc) return;
-  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-    if (state.currentPage < state.totalPages) { state.currentPage++; renderPage(state.currentPage).then(updateNav); }
-  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-    if (state.currentPage > 1)               { state.currentPage--; renderPage(state.currentPage).then(updateNav); }
-  } else if (e.key === ' ')   { e.preventDefault(); btnPlay.click(); }
+  if (!S.pdf) return;
+  if (e.key === ' ')         { e.preventDefault(); btnPlay.click(); }
   else if (e.key === 'Escape') stopTTS();
+  else if (e.key === 'ArrowLeft'  && S.page < S.pages) { S.page++; renderPage(S.page).then(updateNav); }
+  else if (e.key === 'ArrowRight' && S.page > 1)        { S.page--; renderPage(S.page).then(updateNav); }
 });
