@@ -9,16 +9,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 /* ---- State ---- */
 const state = {
-  pdfDoc:       null,
-  currentPage:  1,
-  totalPages:   0,
-  scale:        1.5,
-  textItems:    [],   // [{text, rect:{x,y,w,h}}]
-  sentences:    [],   // [{text, rects:[{x,y,w,h}]}]
-  sentIndex:    0,
-  speaking:     false,
-  paused:       false,
-  detectedLang: null,
+  pdfDoc:      null,
+  currentPage: 1,
+  totalPages:  0,
+  scale:       1.5,
+  textItems:   [],   // [{text, rect:{x,y,w,h}}]
+  sentences:   [],   // [{text, rects:[{x,y,w,h}]}]
+  sentIndex:   0,
+  speaking:    false,
+  paused:      false,
 };
 
 /* ---- DOM refs ---- */
@@ -39,7 +38,6 @@ const pdfCanvas     = $('pdf-canvas');
 const hlCanvas      = $('highlight-canvas');
 const hlCtx         = hlCanvas.getContext('2d');
 const fileNameLabel = $('file-name-label');
-const langBadge     = $('lang-badge');
 const btnPlay       = $('btn-play');
 const iconPlay      = $('icon-play');
 const iconPause     = $('icon-pause');
@@ -51,36 +49,12 @@ const voiceSelect   = $('voice-select');
 const readingProg   = $('reading-progress');
 
 /* ============================================================
-   Language Detection
+   Arabic Voice Selection
    ============================================================ */
-function detectLanguage(text) {
-  if (!text || !text.trim()) return 'unknown';
-  const arabic  = (text.match(/[\u0600-\u06FF]/g) || []).length;
-  const latin   = (text.match(/[A-Za-z]/g)        || []).length;
-  const german  = (text.match(/[äöüÄÖÜß]/g)       || []).length;
-  const total   = arabic + latin;
-  if (total === 0) return 'unknown';
-  if (arabic / total > 0.4) return 'ar';
-  if (german > 5 && latin > arabic) return 'de';
-  return 'en';
-}
-
-const LANG_LABELS = { ar: 'عربي', en: 'إنجليزي', de: 'ألماني', unknown: 'غير معروف' };
-const LANG_PREF   = { ar: ['ar', 'arabic'], en: ['en-US', 'en-GB', 'en'], de: ['de-DE', 'de'] };
-const LANG_CODE   = { ar: 'ar-SA', en: 'en-US', de: 'de-DE' };
-
-function showLangBadge(lang) {
-  langBadge.textContent = `اللغة: ${LANG_LABELS[lang] || lang}`;
-  langBadge.classList.remove('hidden');
-}
-
-function autoSelectVoice(lang) {
+function autoSelectArabicVoice() {
   const voices = speechSynthesis.getVoices();
-  const prefs  = LANG_PREF[lang] || [];
-  for (const p of prefs) {
-    const idx = voices.findIndex(v => v.lang.toLowerCase().startsWith(p.toLowerCase()));
-    if (idx >= 0) { voiceSelect.value = idx; return; }
-  }
+  const idx = voices.findIndex(v => v.lang.toLowerCase().startsWith('ar'));
+  if (idx >= 0) voiceSelect.value = idx;
 }
 
 /* ============================================================
@@ -112,10 +86,7 @@ async function loadPDF(file) {
 
     const firstPage    = await pdf.getPage(1);
     const firstContent = await firstPage.getTextContent();
-    const sample       = firstContent.items.map(i => i.str).join(' ');
-    state.detectedLang = detectLanguage(sample);
-    showLangBadge(state.detectedLang);
-    autoSelectVoice(state.detectedLang);
+    autoSelectArabicVoice();
 
     heroSection.classList.add('hidden');
     readerSection.classList.remove('hidden');
@@ -256,8 +227,6 @@ btnBack.addEventListener('click', () => {
   readerSection.classList.add('hidden');
   fileInput.value = '';
   state.pdfDoc = null;
-  state.detectedLang = null;
-  langBadge.classList.add('hidden');
 });
 
 btnPrev.addEventListener('click', async () => {
@@ -304,13 +273,24 @@ async function changeZoom(delta) {
 function populateVoices() {
   const voices = speechSynthesis.getVoices();
   voiceSelect.innerHTML = '';
-  voices.forEach((v, i) => {
-    const opt = document.createElement('option');
-    opt.value       = i;
-    opt.textContent = `${v.name} (${v.lang})`;
-    voiceSelect.appendChild(opt);
-  });
-  autoSelectVoice(state.detectedLang || 'ar');
+  voices
+    .map((v, i) => ({ v, i }))
+    .filter(({ v }) => v.lang.toLowerCase().startsWith('ar'))
+    .forEach(({ v, i }) => {
+      const opt = document.createElement('option');
+      opt.value       = i;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceSelect.appendChild(opt);
+    });
+  // Fallback: if no Arabic voices found, show all voices
+  if (!voiceSelect.options.length) {
+    voices.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = i; opt.textContent = `${v.name} (${v.lang})`;
+      voiceSelect.appendChild(opt);
+    });
+  }
+  autoSelectArabicVoice();
 }
 
 speechSynthesis.addEventListener('voiceschanged', populateVoices);
@@ -394,7 +374,7 @@ function speakFrom(idx) {
 
   const utt  = new SpeechSynthesisUtterance(sent.text);
   utt.rate   = parseFloat(speedRange.value);
-  utt.lang   = LANG_CODE[state.detectedLang] || 'ar-SA';
+  utt.lang   = 'ar-SA';
 
   const voices = speechSynthesis.getVoices();
   const selIdx = parseInt(voiceSelect.value, 10);
