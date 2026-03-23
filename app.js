@@ -211,24 +211,17 @@ function buildTextLayer(textContent, viewport) {
     const w  = item.width  * state.scale;
     const h  = item.height * state.scale;
 
-    // Split into words for fine-grained highlighting
-    const words = item.str.split(' ').filter(w => w.length > 0);
-    const wordWidth = w / Math.max(words.length, 1);
-    const isRTL = state.detectedLang === 'ar';
-
-    words.forEach((word, i) => {
-      const span = document.createElement('span');
-      span.textContent = word + ' ';
-      // For RTL: word[0] is the rightmost word, so place it at x + (n-1-i) * wordWidth
-      const xPos = isRTL ? (x + (words.length - 1 - i) * wordWidth) : (x + i * wordWidth);
-      span.style.left     = xPos + 'px';
-      span.style.top      = y + 'px';
-      span.style.width    = wordWidth + 'px';
-      span.style.height   = h + 'px';
-      span.style.fontSize = h + 'px';
-      textLayer.appendChild(span);
-      state.textItems.push({ text: word, span });
-    });
+    // Use the whole text item as one span – PDF.js coordinates are already correct
+    // for both LTR and RTL. No manual word splitting needed.
+    const span = document.createElement('span');
+    span.textContent = item.str;
+    span.style.left     = x + 'px';
+    span.style.top      = y + 'px';
+    span.style.width    = w + 'px';
+    span.style.height   = h + 'px';
+    span.style.fontSize = h + 'px';
+    textLayer.appendChild(span);
+    state.textItems.push({ text: item.str, span });
   });
 
   // Re-apply direction for current page
@@ -238,19 +231,19 @@ function buildTextLayer(textContent, viewport) {
 
 function buildSentences() {
   state.sentences = [];
-  let current = { words: [], spans: [] };
+  let current = { parts: [], spans: [] };
 
   state.textItems.forEach(({ text, span }) => {
-    current.words.push(text);
+    current.parts.push(text);
     current.spans.push(span);
-    // Sentence boundary: Arabic ؟ ! . or newline
-    if (/[.!?؟]$/.test(text.trimEnd())) {
-      state.sentences.push({ text: current.words.join(' '), spans: current.spans });
-      current = { words: [], spans: [] };
+    // Sentence boundary: . ! ? ؟
+    if (/[.!?؟]/.test(text)) {
+      state.sentences.push({ text: current.parts.join(' '), spans: current.spans });
+      current = { parts: [], spans: [] };
     }
   });
-  if (current.words.length > 0) {
-    state.sentences.push({ text: current.words.join(' '), spans: current.spans });
+  if (current.parts.length > 0) {
+    state.sentences.push({ text: current.parts.join(' '), spans: current.spans });
   }
 }
 
