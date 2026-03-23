@@ -163,10 +163,10 @@
       <!-- PDF Viewer -->
       <div class="viewer-wrapper">
         <div class="viewer-container" id="viewer-container">
-          <!-- Canvas layer -->
+          <!-- PDF render layer -->
           <canvas id="pdf-canvas"></canvas>
-          <!-- Text layer for highlighting -->
-          <div class="text-layer" id="text-layer"></div>
+          <!-- Highlight overlay (drawn on top, pointer-events:none) -->
+          <canvas id="highlight-canvas"></canvas>
         </div>
       </div>
 

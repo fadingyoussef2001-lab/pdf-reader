@@ -360,32 +360,12 @@ body {
 }
 #pdf-canvas { display: block; }
 
-/* Text Layer */
-.text-layer {
+/* Highlight Canvas – sits exactly on top of pdf-canvas */
+#highlight-canvas {
   position: absolute;
   inset: 0;
-  overflow: hidden;
-  line-height: 1;
-  color: transparent;
   pointer-events: none;
-}
-.text-layer span {
-  position: absolute;
-  white-space: pre;
-  color: transparent;
-  cursor: default;
-  transform-origin: 0% 0%;
-  transition: background 0.15s;
-  border-radius: 2px;
-}
-.text-layer span.hl-active {
-  background: var(--hl-active) !important;
-  color: transparent;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(108,99,255,0.6);
-}
-.text-layer span.hl-done {
-  background: var(--hl-done) !important;
+  display: block;
 }
 
 /* Reading Progress */

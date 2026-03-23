@@ -1,107 +1,84 @@
 /* ============================================================
-   Andreh Deeb – PDF Reader with Live Text Highlighting
+   Andreh Deeb – PDF Reader with Canvas Highlight Overlay
    ============================================================ */
 
 'use strict';
 
-// PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 /* ---- State ---- */
 const state = {
-  pdfDoc: null,
-  currentPage: 1,
-  totalPages: 0,
-  scale: 1.5,
-  textItems: [],       // flat list of {text, span} for current page
-  sentences: [],       // grouped sentences for natural TTS
-  wordIndex: 0,        // TTS progress index (sentence index)
-  utterance: null,
-  speaking: false,
-  paused: false,
-  detectedLang: null,  // detected language of the PDF
+  pdfDoc:       null,
+  currentPage:  1,
+  totalPages:   0,
+  scale:        1.5,
+  textItems:    [],   // [{text, rect:{x,y,w,h}}]
+  sentences:    [],   // [{text, rects:[{x,y,w,h}]}]
+  sentIndex:    0,
+  speaking:     false,
+  paused:       false,
+  detectedLang: null,
 };
 
 /* ---- DOM refs ---- */
 const $ = id => document.getElementById(id);
-const heroSection    = $('hero-section');
-const readerSection  = $('reader-section');
-const fileInput      = $('file-input');
-const uploadZone     = $('upload-zone');
-const btnChoose      = $('btn-choose');
-const btnBack        = $('btn-back');
-const btnPrev        = $('btn-prev');
-const btnNext        = $('btn-next');
-const pageInfo       = $('page-info');
-const btnZoomIn      = $('btn-zoom-in');
-const btnZoomOut     = $('btn-zoom-out');
-const zoomLabel      = $('zoom-label');
-const pdfCanvas      = $('pdf-canvas');
-const textLayer      = $('text-layer');
-const fileNameLabel  = $('file-name-label');
-const langBadge      = $('lang-badge');
-const btnPlay        = $('btn-play');
-const iconPlay       = $('icon-play');
-const iconPause      = $('icon-pause');
-const ttsBtnLabel    = $('tts-btn-label');
-const btnStop        = $('btn-stop');
-const speedRange     = $('speed-range');
-const speedValue     = $('speed-value');
-const voiceSelect    = $('voice-select');
-const readingProg    = $('reading-progress');
+const heroSection   = $('hero-section');
+const readerSection = $('reader-section');
+const fileInput     = $('file-input');
+const uploadZone    = $('upload-zone');
+const btnChoose     = $('btn-choose');
+const btnBack       = $('btn-back');
+const btnPrev       = $('btn-prev');
+const btnNext       = $('btn-next');
+const pageInfo      = $('page-info');
+const btnZoomIn     = $('btn-zoom-in');
+const btnZoomOut    = $('btn-zoom-out');
+const zoomLabel     = $('zoom-label');
+const pdfCanvas     = $('pdf-canvas');
+const hlCanvas      = $('highlight-canvas');
+const hlCtx         = hlCanvas.getContext('2d');
+const fileNameLabel = $('file-name-label');
+const langBadge     = $('lang-badge');
+const btnPlay       = $('btn-play');
+const iconPlay      = $('icon-play');
+const iconPause     = $('icon-pause');
+const ttsBtnLabel   = $('tts-btn-label');
+const btnStop       = $('btn-stop');
+const speedRange    = $('speed-range');
+const speedValue    = $('speed-value');
+const voiceSelect   = $('voice-select');
+const readingProg   = $('reading-progress');
 
 /* ============================================================
    Language Detection
    ============================================================ */
 function detectLanguage(text) {
   if (!text || !text.trim()) return 'unknown';
-
-  const arabicChars  = (text.match(/[\u0600-\u06FF]/g) || []).length;
-  const latinChars   = (text.match(/[A-Za-z]/g) || []).length;
-  const germanChars  = (text.match(/[äöüÄÖÜß]/g) || []).length;
-  const total        = arabicChars + latinChars;
-
+  const arabic  = (text.match(/[\u0600-\u06FF]/g) || []).length;
+  const latin   = (text.match(/[A-Za-z]/g)        || []).length;
+  const german  = (text.match(/[äöüÄÖÜß]/g)       || []).length;
+  const total   = arabic + latin;
   if (total === 0) return 'unknown';
-
-  const arabicRatio  = arabicChars / total;
-
-  if (arabicRatio > 0.4) return 'ar';
-  if (germanChars > 5 && latinChars > arabicChars) return 'de';
+  if (arabic / total > 0.4) return 'ar';
+  if (german > 5 && latin > arabic) return 'de';
   return 'en';
 }
 
-const LANG_LABELS = {
-  ar:      'عربي',
-  en:      'إنجليزي',
-  de:      'ألماني',
-  unknown: 'غير معروف',
-};
-
-const LANG_PREF = {
-  ar: ['ar', 'arabic'],
-  en: ['en-US', 'en-GB', 'en'],
-  de: ['de-DE', 'de'],
-};
+const LANG_LABELS = { ar: 'عربي', en: 'إنجليزي', de: 'ألماني', unknown: 'غير معروف' };
+const LANG_PREF   = { ar: ['ar', 'arabic'], en: ['en-US', 'en-GB', 'en'], de: ['de-DE', 'de'] };
+const LANG_CODE   = { ar: 'ar-SA', en: 'en-US', de: 'de-DE' };
 
 function showLangBadge(lang) {
   langBadge.textContent = `اللغة: ${LANG_LABELS[lang] || lang}`;
   langBadge.classList.remove('hidden');
 }
 
-function applyLangToTextLayer(lang) {
-  if (lang === 'ar') {
-    textLayer.setAttribute('dir', 'rtl');
-  } else {
-    textLayer.setAttribute('dir', 'ltr');
-  }
-}
-
-function autoSelectVoiceForLang(lang) {
+function autoSelectVoice(lang) {
   const voices = speechSynthesis.getVoices();
   const prefs  = LANG_PREF[lang] || [];
-  for (const prefix of prefs) {
-    const idx = voices.findIndex(v => v.lang.toLowerCase().startsWith(prefix.toLowerCase()));
+  for (const p of prefs) {
+    const idx = voices.findIndex(v => v.lang.toLowerCase().startsWith(p.toLowerCase()));
     if (idx >= 0) { voiceSelect.value = idx; return; }
   }
 }
@@ -110,55 +87,38 @@ function autoSelectVoiceForLang(lang) {
    Upload / File Handling
    ============================================================ */
 btnChoose.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', e => {
-  if (e.target.files[0]) loadPDF(e.target.files[0]);
-});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadPDF(e.target.files[0]); });
 
-uploadZone.addEventListener('click', e => {
-  if (e.target === btnChoose) return;
-  fileInput.click();
-});
-
-uploadZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  uploadZone.classList.add('drag-over');
-});
+uploadZone.addEventListener('click', e => { if (e.target !== btnChoose) fileInput.click(); });
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
 uploadZone.addEventListener('drop', e => {
   e.preventDefault();
   uploadZone.classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
-  if (file && file.type === 'application/pdf') {
-    loadPDF(file);
-  } else {
-    showToast('يرجى تحميل ملف PDF صالح.', true);
-  }
+  if (file && file.type === 'application/pdf') loadPDF(file);
+  else showToast('يرجى تحميل ملف PDF صالح.', true);
 });
 
 async function loadPDF(file) {
   showLoading();
   stopTTS();
-
-  const arrayBuffer = await file.arrayBuffer();
   try {
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    state.pdfDoc     = pdf;
-    state.totalPages = pdf.numPages;
-    state.currentPage = 1;
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    state.pdfDoc       = pdf;
+    state.totalPages   = pdf.numPages;
+    state.currentPage  = 1;
     fileNameLabel.textContent = file.name;
 
-    // Detect language from first page text
-    const firstPage = await pdf.getPage(1);
+    const firstPage    = await pdf.getPage(1);
     const firstContent = await firstPage.getTextContent();
-    const sampleText = firstContent.items.map(i => i.str).join(' ');
-    state.detectedLang = detectLanguage(sampleText);
+    const sample       = firstContent.items.map(i => i.str).join(' ');
+    state.detectedLang = detectLanguage(sample);
     showLangBadge(state.detectedLang);
-    applyLangToTextLayer(state.detectedLang);
-    autoSelectVoiceForLang(state.detectedLang);
+    autoSelectVoice(state.detectedLang);
 
     heroSection.classList.add('hidden');
     readerSection.classList.remove('hidden');
-
     await renderPage(state.currentPage);
     updateNav();
   } catch (err) {
@@ -174,20 +134,20 @@ async function loadPDF(file) {
 async function renderPage(pageNum) {
   showLoading();
   stopTTS();
-  clearHighlights();
 
-  const page    = await state.pdfDoc.getPage(pageNum);
+  const page     = await state.pdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: state.scale });
 
-  pdfCanvas.width  = viewport.width;
-  pdfCanvas.height = viewport.height;
+  // Size both canvases identically
+  pdfCanvas.width  = hlCanvas.width  = viewport.width;
+  pdfCanvas.height = hlCanvas.height = viewport.height;
 
-  const ctx = pdfCanvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  // Render PDF onto pdfCanvas
+  await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport }).promise;
 
-  // Build text layer
+  // Build text item rects (for highlight drawing)
   const textContent = await page.getTextContent();
-  buildTextLayer(textContent, viewport);
+  buildTextRects(textContent, viewport);
 
   pageInfo.textContent = `صفحة ${pageNum} / ${state.totalPages}`;
   updateProgress();
@@ -195,56 +155,96 @@ async function renderPage(pageNum) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function buildTextLayer(textContent, viewport) {
-  textLayer.innerHTML = '';
-  textLayer.style.width  = viewport.width  + 'px';
-  textLayer.style.height = viewport.height + 'px';
-
+/* ============================================================
+   Text Item Extraction – store bounding rects, no DOM spans
+   ============================================================ */
+function buildTextRects(textContent, viewport) {
   state.textItems = [];
 
   textContent.items.forEach(item => {
     if (!item.str.trim()) return;
 
     const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-    const x  = tx[4];
-    const y  = tx[5] - item.height;
-    const w  = item.width  * state.scale;
-    const h  = item.height * state.scale;
+    // tx[4]=x (left edge), tx[5]=y (baseline)
+    // item.height is in user-space; after transform it's already scaled
+    const x = tx[4];
+    const y = tx[5] - item.height;
+    const w = item.width;    // width from PDF.js already in viewport space
+    const h = item.height;
 
-    // Use the whole text item as one span – PDF.js coordinates are already correct
-    // for both LTR and RTL. No manual word splitting needed.
-    const span = document.createElement('span');
-    span.textContent = item.str;
-    span.style.left     = x + 'px';
-    span.style.top      = y + 'px';
-    span.style.width    = w + 'px';
-    span.style.height   = h + 'px';
-    span.style.fontSize = h + 'px';
-    textLayer.appendChild(span);
-    state.textItems.push({ text: item.str, span });
+    state.textItems.push({ text: item.str, rect: { x, y, w, h } });
   });
 
-  // Re-apply direction for current page
-  applyLangToTextLayer(state.detectedLang || 'ar');
   buildSentences();
 }
 
+/* ============================================================
+   Sentence Builder – group text items into natural sentences
+   (max ~120 chars so TTS doesn't get cut off)
+   ============================================================ */
+const MAX_SENT_CHARS = 120;
+
 function buildSentences() {
   state.sentences = [];
-  let current = { parts: [], spans: [] };
+  let cur = { parts: [], rects: [] };
 
-  state.textItems.forEach(({ text, span }) => {
-    current.parts.push(text);
-    current.spans.push(span);
-    // Sentence boundary: . ! ? ؟
-    if (/[.!?؟]/.test(text)) {
-      state.sentences.push({ text: current.parts.join(' '), spans: current.spans });
-      current = { parts: [], spans: [] };
+  const flush = () => {
+    if (cur.parts.length) {
+      state.sentences.push({ text: cur.parts.join(' ').trim(), rects: cur.rects });
+      cur = { parts: [], rects: [] };
+    }
+  };
+
+  state.textItems.forEach(({ text, rect }) => {
+    cur.parts.push(text);
+    cur.rects.push(rect);
+    const joined = cur.parts.join(' ');
+    // Flush on sentence-ending punctuation OR when getting too long
+    if (/[.!?؟،]/.test(text) || joined.length >= MAX_SENT_CHARS) {
+      flush();
     }
   });
-  if (current.parts.length > 0) {
-    state.sentences.push({ text: current.parts.join(' '), spans: current.spans });
-  }
+  flush();
+}
+
+/* ============================================================
+   Canvas Highlight Drawing
+   ============================================================ */
+const HL_ACTIVE = 'rgba(108,99,255,0.50)';
+const HL_DONE   = 'rgba(62,207,207,0.22)';
+
+function clearHighlights() {
+  hlCtx.clearRect(0, 0, hlCanvas.width, hlCanvas.height);
+}
+
+function drawHighlights(activeSentIdx) {
+  clearHighlights();
+
+  state.sentences.forEach((sent, i) => {
+    if (i === activeSentIdx) {
+      hlCtx.fillStyle = HL_ACTIVE;
+      sent.rects.forEach(r => {
+        hlCtx.beginPath();
+        hlCtx.roundRect(r.x - 2, r.y - 1, r.w + 4, r.h + 2, 3);
+        hlCtx.fill();
+      });
+    } else if (i < activeSentIdx) {
+      hlCtx.fillStyle = HL_DONE;
+      sent.rects.forEach(r => hlCtx.fillRect(r.x, r.y, r.w, r.h));
+    }
+  });
+}
+
+function scrollToSentence(sentIdx) {
+  const sent = state.sentences[sentIdx];
+  if (!sent || !sent.rects.length) return;
+  const wrapper = document.querySelector('.viewer-wrapper');
+  if (!wrapper) return;
+  const r = sent.rects[0];
+  // hlCanvas offset inside wrapper
+  const canvasTop = hlCanvas.offsetTop;
+  // Scroll so the sentence is roughly centered
+  wrapper.scrollTo({ top: canvasTop + r.y - wrapper.clientHeight / 3, behavior: 'smooth' });
 }
 
 /* ============================================================
@@ -264,16 +264,14 @@ btnPrev.addEventListener('click', async () => {
   if (state.currentPage <= 1) return;
   state.currentPage--;
   await renderPage(state.currentPage);
-  updateNav();
-  updateProgress();
+  updateNav(); updateProgress();
 });
 
 btnNext.addEventListener('click', async () => {
   if (state.currentPage >= state.totalPages) return;
   state.currentPage++;
   await renderPage(state.currentPage);
-  updateNav();
-  updateProgress();
+  updateNav(); updateProgress();
 });
 
 function updateNav() {
@@ -282,16 +280,14 @@ function updateNav() {
 }
 
 function updateProgress() {
-  const pct = state.totalPages > 0
-    ? (state.currentPage / state.totalPages) * 100
-    : 0;
+  const pct = state.totalPages > 0 ? (state.currentPage / state.totalPages) * 100 : 0;
   readingProg.style.width = pct + '%';
 }
 
 /* ============================================================
    Zoom
    ============================================================ */
-btnZoomIn.addEventListener('click', () => changeZoom(0.25));
+btnZoomIn.addEventListener('click',  () => changeZoom( 0.25));
 btnZoomOut.addEventListener('click', () => changeZoom(-0.25));
 
 async function changeZoom(delta) {
@@ -303,20 +299,18 @@ async function changeZoom(delta) {
 }
 
 /* ============================================================
-   Text-to-Speech with Word Highlighting
+   Voices
    ============================================================ */
 function populateVoices() {
   const voices = speechSynthesis.getVoices();
   voiceSelect.innerHTML = '';
   voices.forEach((v, i) => {
     const opt = document.createElement('option');
-    opt.value = i;
+    opt.value       = i;
     opt.textContent = `${v.name} (${v.lang})`;
     voiceSelect.appendChild(opt);
   });
-  // Prefer Arabic voice by default
-  const arIdx = voices.findIndex(v => v.lang.startsWith('ar'));
-  if (arIdx >= 0) voiceSelect.value = arIdx;
+  autoSelectVoice(state.detectedLang || 'ar');
 }
 
 speechSynthesis.addEventListener('voiceschanged', populateVoices);
@@ -324,32 +318,24 @@ populateVoices();
 
 speedRange.addEventListener('input', () => {
   speedValue.textContent = parseFloat(speedRange.value).toFixed(1) + '×';
-  if (state.speaking && !state.paused) {
-    restartTTSFromCurrent();
-  }
+  if (state.speaking && !state.paused) restartTTSFromCurrent();
 });
 
+/* ============================================================
+   TTS
+   ============================================================ */
 btnPlay.addEventListener('click', () => {
   if (!state.pdfDoc) return;
-  if (state.paused) {
-    resumeTTS();
-  } else if (state.speaking) {
-    pauseTTS();
-  } else {
-    startTTS();
-  }
+  if      (state.paused)  resumeTTS();
+  else if (state.speaking) pauseTTS();
+  else                    startTTS();
 });
 
-btnStop.addEventListener('click', () => {
-  stopTTS();
-});
+btnStop.addEventListener('click', stopTTS);
 
 function startTTS() {
-  if (!state.sentences.length) {
-    showToast('لا يوجد نص في هذه الصفحة.');
-    return;
-  }
-  state.wordIndex = 0;
+  if (!state.sentences.length) { showToast('لا يوجد نص في هذه الصفحة.'); return; }
+  state.sentIndex = 0;
   state.speaking  = true;
   state.paused    = false;
   updatePlayButton();
@@ -372,52 +358,43 @@ function stopTTS() {
   speechSynthesis.cancel();
   state.speaking  = false;
   state.paused    = false;
-  state.wordIndex = 0;
+  state.sentIndex = 0;
   clearHighlights();
   updatePlayButton();
-  readingProg.style.width = (state.currentPage / Math.max(state.totalPages,1)) * 100 + '%';
+  updateProgress();
 }
 
 function restartTTSFromCurrent() {
-  const sentIdx = state.wordIndex;
+  const idx = state.sentIndex;
   speechSynthesis.cancel();
-  setTimeout(() => speakFrom(sentIdx), 80);
+  setTimeout(() => speakFrom(idx), 80);
 }
 
-function speakFrom(sentIdx) {
-  state.wordIndex = sentIdx;
+function speakFrom(idx) {
+  state.sentIndex = idx;
 
-  if (sentIdx >= state.sentences.length) {
-    // Page done – auto advance
+  if (idx >= state.sentences.length) {
     state.speaking = false;
     updatePlayButton();
+    clearHighlights();
+    // Auto-advance to next page
     if (state.currentPage < state.totalPages) {
       state.currentPage++;
-      renderPage(state.currentPage).then(() => {
-        updateNav();
-        startTTS();
-      });
+      renderPage(state.currentPage).then(() => { updateNav(); startTTS(); });
     }
     return;
   }
 
-  const sentence = state.sentences[sentIdx];
+  const sent = state.sentences[idx];
+  drawHighlights(idx);
+  scrollToSentence(idx);
 
-  // Highlight all spans of this sentence
-  clearHighlights();
-  sentence.spans.forEach(span => {
-    span.classList.add('hl-active');
-  });
-  sentence.spans[0]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-
-  const pct = (sentIdx / state.sentences.length) * 100;
+  const pct = (idx / state.sentences.length) * 100;
   readingProg.style.width = pct + '%';
 
-  const utt = new SpeechSynthesisUtterance(sentence.text);
-  utt.rate  = parseFloat(speedRange.value);
-
-  const LANG_CODE = { ar: 'ar-SA', en: 'en-US', de: 'de-DE' };
-  utt.lang = LANG_CODE[state.detectedLang] || 'ar-SA';
+  const utt  = new SpeechSynthesisUtterance(sent.text);
+  utt.rate   = parseFloat(speedRange.value);
+  utt.lang   = LANG_CODE[state.detectedLang] || 'ar-SA';
 
   const voices = speechSynthesis.getVoices();
   const selIdx = parseInt(voiceSelect.value, 10);
@@ -425,49 +402,26 @@ function speakFrom(sentIdx) {
 
   utt.onend = () => {
     if (!state.speaking) return;
-    // Mark sentence as done
-    sentence.spans.forEach(span => {
-      span.classList.remove('hl-active');
-      span.classList.add('hl-done');
-    });
-    speakFrom(sentIdx + 1);
+    speakFrom(idx + 1);
   };
 
   utt.onerror = err => {
-    if (err.error !== 'interrupted' && err.error !== 'canceled') {
+    if (err.error !== 'interrupted' && err.error !== 'canceled')
       console.warn('TTS error:', err.error);
-    }
   };
 
-  state.utterance = utt;
   speechSynthesis.speak(utt);
 }
 
-
-function clearHighlights() {
-  state.textItems.forEach(item => {
-    item.span.classList.remove('hl-active', 'hl-done');
-  });
-}
-
 function updatePlayButton() {
-  if (state.speaking && !state.paused) {
-    iconPlay.classList.add('hidden');
-    iconPause.classList.remove('hidden');
-    ttsBtnLabel.textContent = 'إيقاف مؤقت';
-  } else if (state.paused) {
-    iconPlay.classList.remove('hidden');
-    iconPause.classList.add('hidden');
-    ttsBtnLabel.textContent = 'استمرار';
-  } else {
-    iconPlay.classList.remove('hidden');
-    iconPause.classList.add('hidden');
-    ttsBtnLabel.textContent = 'بدء القراءة';
-  }
+  const playing = state.speaking && !state.paused;
+  iconPlay.classList.toggle('hidden',  playing);
+  iconPause.classList.toggle('hidden', !playing);
+  ttsBtnLabel.textContent = playing ? 'إيقاف مؤقت' : state.paused ? 'استمرار' : 'بدء القراءة';
 }
 
 /* ============================================================
-   Loading overlay helpers (inline in viewer-wrapper)
+   Loading Spinner
    ============================================================ */
 let spinnerEl = null;
 
@@ -477,14 +431,12 @@ function showLoading() {
   spinnerEl.className = 'spinner-wrap';
   spinnerEl.innerHTML = '<div class="spinner"></div><span>جارٍ تحميل الملف…</span>';
   document.querySelector('.viewer-wrapper')?.appendChild(spinnerEl);
-  pdfCanvas.style.display = 'none';
-  textLayer.style.display = 'none';
+  pdfCanvas.style.display = hlCanvas.style.display = 'none';
 }
 
 function hideLoading() {
   if (spinnerEl) { spinnerEl.remove(); spinnerEl = null; }
-  pdfCanvas.style.display = '';
-  textLayer.style.display = '';
+  pdfCanvas.style.display = hlCanvas.style.display = '';
 }
 
 /* ============================================================
@@ -499,24 +451,14 @@ function showToast(msg, isError = false) {
 }
 
 /* ============================================================
-   Keyboard shortcuts
+   Keyboard Shortcuts
    ============================================================ */
 document.addEventListener('keydown', e => {
   if (!state.pdfDoc) return;
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-    if (state.currentPage < state.totalPages) {
-      state.currentPage++;
-      renderPage(state.currentPage).then(updateNav);
-    }
+  if      (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    if (state.currentPage < state.totalPages) { state.currentPage++; renderPage(state.currentPage).then(updateNav); }
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-    if (state.currentPage > 1) {
-      state.currentPage--;
-      renderPage(state.currentPage).then(updateNav);
-    }
-  } else if (e.key === ' ') {
-    e.preventDefault();
-    btnPlay.click();
-  } else if (e.key === 'Escape') {
-    stopTTS();
-  }
+    if (state.currentPage > 1)               { state.currentPage--; renderPage(state.currentPage).then(updateNav); }
+  } else if (e.key === ' ')   { e.preventDefault(); btnPlay.click(); }
+  else if (e.key === 'Escape') stopTTS();
 });
