@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andreh Deeb – PDF Reader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="36" height="36" rx="10" fill="url(#grad)"/>
+            <path d="M10 10h8c4.4 0 8 3.6 8 8s-3.6 8-8 8h-8V10z" fill="white" opacity=".9"/>
+            <path d="M13 14h4.5c2.5 0 4.5 2 4.5 4.5S19.8 23 17.5 23H13V14z" fill="url(#grad2)"/>
+            <defs>
+              <linearGradient id="grad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6C63FF"/>
+                <stop offset="1" stop-color="#3ECFCF"/>
+              </linearGradient>
+              <linearGradient id="grad2" x1="13" y1="14" x2="22" y2="23" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6C63FF"/>
+                <stop offset="1" stop-color="#3ECFCF"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </span>
+        <span class="logo-text">Andreh Deeb</span>
+      </div>
+      <nav class="nav-badge">PDF Reader Pro</nav>
+    </div>
+  </header>
+
+  <!-- Hero / Upload Section -->
+  <main>
+    <section class="hero" id="hero-section">
+      <div class="hero-content">
+        <h1 class="hero-title">Lese deine PDF <span class="gradient-text">intelligent</span></h1>
+        <p class="hero-sub">Lade eine PDF-Datei hoch – der Text wird automatisch vorgelesen und farblich hervorgehoben, damit du immer weißt, wo du bist.</p>
+
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" id="file-input" accept=".pdf" hidden />
+          <div class="upload-icon">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="32" cy="32" r="32" fill="url(#uploadGrad)"/>
+              <path d="M32 20v16M24 28l8-8 8 8" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M20 44h24" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <defs>
+                <linearGradient id="uploadGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#6C63FF"/>
+                  <stop offset="1" stop-color="#3ECFCF"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <p class="upload-title">PDF hierher ziehen</p>
+          <p class="upload-sub">oder klicken zum Auswählen</p>
+          <button class="btn-upload" id="btn-choose">Datei auswählen</button>
+        </div>
+      </div>
+
+      <div class="hero-illustration">
+        <div class="float-card card1">
+          <span class="card-dot dot-green"></span>
+          <span>Text wird hervorgehoben</span>
+        </div>
+        <div class="float-card card2">
+          <span class="card-dot dot-purple"></span>
+          <span>Vorgelesen per Stimme</span>
+        </div>
+        <div class="float-card card3">
+          <span class="card-dot dot-teal"></span>
+          <span>Keine Anmeldung nötig</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reader Section (hidden until PDF loaded) -->
+    <section class="reader-section hidden" id="reader-section">
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button class="btn-icon" id="btn-back" title="Neue PDF laden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+          </button>
+          <span class="file-name-label" id="file-name-label">–</span>
+        </div>
+
+        <div class="toolbar-center">
+          <button class="btn-icon" id="btn-prev" title="Vorherige Seite" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+          <span class="page-info" id="page-info">Seite 1 / 1</span>
+          <button class="btn-icon" id="btn-next" title="Nächste Seite" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="toolbar-right">
+          <button class="btn-icon" id="btn-zoom-out" title="Verkleinern">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35M8 11h6"/>
+            </svg>
+          </button>
+          <span class="zoom-label" id="zoom-label">100%</span>
+          <button class="btn-icon" id="btn-zoom-in" title="Vergrößern">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- TTS Controls -->
+      <div class="tts-bar">
+        <button class="btn-tts" id="btn-play">
+          <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" class="hidden">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+          <span id="tts-btn-label">Vorlesen starten</span>
+        </button>
+
+        <div class="tts-controls">
+          <label class="tts-label">Geschwindigkeit</label>
+          <input type="range" id="speed-range" min="0.5" max="2" step="0.1" value="1" class="range-input" />
+          <span class="tts-value" id="speed-value">1.0×</span>
+        </div>
+
+        <div class="tts-controls">
+          <label class="tts-label">Stimme</label>
+          <select id="voice-select" class="voice-select"></select>
+        </div>
+
+        <button class="btn-tts btn-stop" id="btn-stop">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+          Stopp
+        </button>
+      </div>
+
+      <!-- PDF Viewer -->
+      <div class="viewer-wrapper">
+        <div class="viewer-container" id="viewer-container">
+          <!-- Canvas layer -->
+          <canvas id="pdf-canvas"></canvas>
+          <!-- Text layer for highlighting -->
+          <div class="text-layer" id="text-layer"></div>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="reading-progress-bar">
+        <div class="reading-progress-fill" id="reading-progress"></div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>© 2024 <strong>Andreh Deeb</strong> – PDF Reader Pro. Keine Anmeldung. Kein Tracking. Nur Lesen.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
