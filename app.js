@@ -15,7 +15,8 @@ const state = {
   totalPages: 0,
   scale: 1.5,
   textItems: [],       // flat list of {text, span} for current page
-  wordIndex: 0,        // TTS progress index into textItems
+  sentences: [],       // grouped sentences for natural TTS
+  wordIndex: 0,        // TTS progress index (sentence index)
   utterance: null,
   speaking: false,
   paused: false,
@@ -229,6 +230,25 @@ function buildTextLayer(textContent, viewport) {
 
   // Re-apply direction for current page
   applyLangToTextLayer(state.detectedLang || 'ar');
+  buildSentences();
+}
+
+function buildSentences() {
+  state.sentences = [];
+  let current = { words: [], spans: [] };
+
+  state.textItems.forEach(({ text, span }) => {
+    current.words.push(text);
+    current.spans.push(span);
+    // Sentence boundary: Arabic ؟ ! . or newline
+    if (/[.!?؟]$/.test(text.trimEnd())) {
+      state.sentences.push({ text: current.words.join(' '), spans: current.spans });
+      current = { words: [], spans: [] };
+    }
+  });
+  if (current.words.length > 0) {
+    state.sentences.push({ text: current.words.join(' '), spans: current.spans });
+  }
 }
 
 /* ============================================================
@@ -329,7 +349,7 @@ btnStop.addEventListener('click', () => {
 });
 
 function startTTS() {
-  if (!state.textItems.length) {
+  if (!state.sentences.length) {
     showToast('لا يوجد نص في هذه الصفحة.');
     return;
   }
@@ -363,13 +383,15 @@ function stopTTS() {
 }
 
 function restartTTSFromCurrent() {
-  const idx = state.wordIndex;
+  const sentIdx = state.wordIndex;
   speechSynthesis.cancel();
-  setTimeout(() => speakFrom(idx), 80);
+  setTimeout(() => speakFrom(sentIdx), 80);
 }
 
-function speakFrom(startIdx) {
-  if (startIdx >= state.textItems.length) {
+function speakFrom(sentIdx) {
+  state.wordIndex = sentIdx;
+
+  if (sentIdx >= state.sentences.length) {
     // Page done – auto advance
     state.speaking = false;
     updatePlayButton();
@@ -383,12 +405,19 @@ function speakFrom(startIdx) {
     return;
   }
 
-  // Build text chunk of ~30 words for natural prosody
-  const CHUNK = 30;
-  const chunk  = state.textItems.slice(startIdx, startIdx + CHUNK);
-  const text   = chunk.map(i => i.text).join(' ');
+  const sentence = state.sentences[sentIdx];
 
-  const utt = new SpeechSynthesisUtterance(text);
+  // Highlight all spans of this sentence
+  clearHighlights();
+  sentence.spans.forEach(span => {
+    span.classList.add('hl-active');
+  });
+  sentence.spans[0]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  const pct = (sentIdx / state.sentences.length) * 100;
+  readingProg.style.width = pct + '%';
+
+  const utt = new SpeechSynthesisUtterance(sentence.text);
   utt.rate  = parseFloat(speedRange.value);
 
   const LANG_CODE = { ar: 'ar-SA', en: 'en-US', de: 'de-DE' };
@@ -398,23 +427,14 @@ function speakFrom(startIdx) {
   const selIdx = parseInt(voiceSelect.value, 10);
   if (voices[selIdx]) utt.voice = voices[selIdx];
 
-  // Word boundary highlighting
-  utt.onboundary = e => {
-    if (e.name !== 'word') return;
-    const chunkText  = text.substring(0, e.charIndex);
-    const wordsSoFar = chunkText.trim() ? chunkText.trim().split(/\s+/).length : 0;
-    const globalIdx  = startIdx + wordsSoFar;
-    highlightWord(globalIdx);
-    state.wordIndex = globalIdx;
-    const pct = (globalIdx / state.textItems.length) * 100;
-    readingProg.style.width = pct + '%';
-  };
-
   utt.onend = () => {
     if (!state.speaking) return;
-    const nextIdx = startIdx + CHUNK;
-    state.wordIndex = nextIdx;
-    speakFrom(nextIdx);
+    // Mark sentence as done
+    sentence.spans.forEach(span => {
+      span.classList.remove('hl-active');
+      span.classList.add('hl-done');
+    });
+    speakFrom(sentIdx + 1);
   };
 
   utt.onerror = err => {
@@ -427,20 +447,6 @@ function speakFrom(startIdx) {
   speechSynthesis.speak(utt);
 }
 
-function highlightWord(idx) {
-  state.textItems.forEach((item, i) => {
-    if (i < idx) {
-      item.span.classList.remove('hl-active');
-      item.span.classList.add('hl-done');
-    } else if (i === idx) {
-      item.span.classList.add('hl-active');
-      item.span.classList.remove('hl-done');
-      item.span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    } else {
-      item.span.classList.remove('hl-active', 'hl-done');
-    }
-  });
-}
 
 function clearHighlights() {
   state.textItems.forEach(item => {
