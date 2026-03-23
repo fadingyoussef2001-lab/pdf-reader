@@ -125,6 +125,11 @@
               <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
             </svg>
           </button>
+          <button class="btn-icon btn-text-mode" id="btn-text-mode" title="عرض النص فقط">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 6h16M4 12h16M4 18h10"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -167,6 +172,8 @@
           <!-- Highlight overlay (drawn on top, pointer-events:none) -->
           <canvas id="highlight-canvas"></canvas>
         </div>
+        <!-- Text-only mode panel -->
+        <div class="text-panel hidden" id="text-panel" dir="rtl"></div>
       </div>
 
       <!-- Progress bar -->

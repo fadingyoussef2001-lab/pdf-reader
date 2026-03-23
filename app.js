@@ -47,6 +47,10 @@ const speedRange    = $('speed-range');
 const speedValue    = $('speed-value');
 const voiceSelect   = $('voice-select');
 const readingProg   = $('reading-progress');
+const btnTextMode   = $('btn-text-mode');
+const textPanel     = $('text-panel');
+const viewerCont    = $('viewer-container');
+let   textModeOn    = false;
 
 /* ============================================================
    Arabic Voice Selection
@@ -123,6 +127,7 @@ async function renderPage(pageNum) {
   pageInfo.textContent = `صفحة ${pageNum} / ${state.totalPages}`;
   updateProgress();
   hideLoading();
+  if (textModeOn) renderTextPanel();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -293,6 +298,43 @@ function populateVoices() {
   autoSelectArabicVoice();
 }
 
+/* ============================================================
+   Text Mode Toggle
+   ============================================================ */
+btnTextMode.addEventListener('click', () => {
+  textModeOn = !textModeOn;
+  btnTextMode.classList.toggle('active', textModeOn);
+  viewerCont.classList.toggle('hidden', textModeOn);
+  textPanel.classList.toggle('hidden', !textModeOn);
+  if (textModeOn) renderTextPanel();
+});
+
+function renderTextPanel() {
+  textPanel.innerHTML = '';
+  state.sentences.forEach((sent, i) => {
+    const span = document.createElement('span');
+    span.className = 'tp-sent' + (i < state.sentIndex ? ' done' : i === state.sentIndex && state.speaking ? ' active' : '');
+    span.textContent = sent.text + ' ';
+    span.dataset.idx = i;
+    span.addEventListener('click', () => {
+      if (!state.speaking) startTTSFrom(i);
+      else restartTTSFromCurrent(i);
+    });
+    textPanel.appendChild(span);
+  });
+}
+
+function updateTextPanel(idx) {
+  if (!textModeOn) return;
+  textPanel.querySelectorAll('.tp-sent').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+    el.classList.toggle('done',   i < idx);
+  });
+  // Scroll active sentence into view
+  const active = textPanel.querySelector('.tp-sent.active');
+  if (active) active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
 speechSynthesis.addEventListener('voiceschanged', populateVoices);
 populateVoices();
 
@@ -315,11 +357,22 @@ btnStop.addEventListener('click', stopTTS);
 
 function startTTS() {
   if (!state.sentences.length) { showToast('لا يوجد نص في هذه الصفحة.'); return; }
+  if (textModeOn) renderTextPanel();
   state.sentIndex = 0;
   state.speaking  = true;
   state.paused    = false;
   updatePlayButton();
   speakFrom(0);
+}
+
+function startTTSFrom(idx) {
+  if (!state.sentences.length) return;
+  if (textModeOn) renderTextPanel();
+  state.sentIndex = idx;
+  state.speaking  = true;
+  state.paused    = false;
+  updatePlayButton();
+  speakFrom(idx);
 }
 
 function pauseTTS() {
@@ -342,12 +395,13 @@ function stopTTS() {
   clearHighlights();
   updatePlayButton();
   updateProgress();
+  updateTextPanel(-1);
 }
 
-function restartTTSFromCurrent() {
-  const idx = state.sentIndex;
+function restartTTSFromCurrent(idx) {
+  const target = idx !== undefined ? idx : state.sentIndex;
   speechSynthesis.cancel();
-  setTimeout(() => speakFrom(idx), 80);
+  setTimeout(() => speakFrom(target), 80);
 }
 
 function speakFrom(idx) {
@@ -368,6 +422,7 @@ function speakFrom(idx) {
   const sent = state.sentences[idx];
   drawHighlights(idx);
   scrollToSentence(idx);
+  updateTextPanel(idx);
 
   const pct = (idx / state.sentences.length) * 100;
   readingProg.style.width = pct + '%';
